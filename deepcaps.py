@@ -581,11 +581,6 @@ class Conv2DCaps(nn.Module):
         in_size = self.h_i
         x = inputs.view(self.batch, self.ch_i * self.n_i, self.h_i, self.w_i)
         
-        # torch.nn.functional.conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1) → Tensor
-#         print("Stride : ", self.stride)
-#         print("input: ", x.shape)
-#         print("weight: ", self.w_reshaped.shape)
-#         x = func.conv2d(input=x, weight=self.w_reshaped, stride=self.stride, padding=1)
         x = self.conv1(x)
         width = x.shape[2]
         x = x.view(inputs.shape[0], self.ch_j, self.n_j, width, width)
@@ -632,19 +627,12 @@ class ConvCapsLayer3D(nn.Module):
 
     x = inputs.view(self.batch, self.ch_i * self.n_i, self.h_i, self.w_i)
     x = x.unsqueeze(1)
-        
-    # torch.nn.functional.conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1) → Tensor    
-#     x = func.conv3d(input=x, weight=self.w, stride=(self.n_i, 1, 1), padding=(0, 1, 1))
     x = self.conv1(x)
     width = x.shape[-1]
     
     x = x.permute(0,2,1,3,4)
     x = x.view(self.batch, self.ch_i, self.ch_j, self.n_j, width, width)
     x = x.permute(0, 4, 5, 3, 2, 1).contiguous()
-    
-    '''
-    CHECK IF x is becoming zeros
-    '''
     self.B = x.new(x.shape[0], width, width, 1, self.ch_j, self.ch_i).zero_()
     x = self.update_routing(x, self.r_num)
     return x
@@ -692,23 +680,8 @@ class Mask_CID(nn.Module):
         masked = torch.zeros((x.shape[0], 1) + x.shape[2:])
         for i in increasing:
             masked[i] = x[m[i][0], m[i][1], :].unsqueeze(0)
-# ----------------------------------------------------------------------------        
-        '''
-        masked_tmp = [t[a[0], a[1], :].unsqueeze(0) for a in m]
-        masked = torch.zeros((t.shape[0],1,t.shape[2]))
-        for i in increasing:
-            masked[i] = masked_tmp[i]
-        '''
+
         return masked.squeeze(-1), max_len_indices  # dim: (batch, 1, capsule_dim)
-#       masked = x.gather()
-#       masked = x.new_tensor(torch.eye(self.num_caps))
-#     # print("max_len_indices: ", max_len_indices.shape)
-#       masked = masked.index_select(dim=0, index=max_len_indices.data)
-#     # print("dec_x: ", x.shape)
-#     # print("dec_masked: ", masked.shape)
-#       masked_output_tmp = (x * masked[:, :, None, None])
-#       masked_output = masked_output_tmp.view(x.shape[0], -1)
-    
 
 
 # In[11]:
@@ -806,9 +779,6 @@ class Decoder_mnist(nn.Module):
         
         x = self.reconst_layers1(x)
         
-        # padding
-        #p2d = (1, 1, 1, 1)
-        #x = func.pad(x, p2d, "constant", 0)
         x = self.reconst_layers2(x)
         
         # padding
@@ -876,24 +846,12 @@ class Model(nn.Module):
         x = self.conv2dCaps1_nj_4_strd_1_2(x)
         x = self.conv2dCaps1_nj_4_strd_1_3(x)
         x = x + x_skip
-        '''
-        SAI:  torch.Size([100, 32, 4, 14, 14])
-        torch.Size([100, 32, 8, 7, 7])
-        torch.Size([100, 32, 8, 4, 4])
-        torch.Size([100, 32, 8, 2, 2])
-        '''
-#         print("\nSAI: ", x.shape)
-#         print("1: ", x[2][5])
-#         print(x[12][5])
         
         x = self.conv2dCaps2_nj_8_strd_2(x)
         x_skip = self.conv2dCaps2_nj_8_strd_1_1(x)
         x = self.conv2dCaps2_nj_8_strd_1_2(x)
         x = self.conv2dCaps2_nj_8_strd_1_3(x)
         x = x + x_skip
-#         print("\nSAI: ", x.shape)
-#         print("2: ", x[2][5])
-#         print(x[12][5])
         
         x = self.conv2dCaps3_nj_8_strd_2(x)
         x_skip = self.conv2dCaps3_nj_8_strd_1_1(x)
@@ -901,9 +859,6 @@ class Model(nn.Module):
         x = self.conv2dCaps3_nj_8_strd_1_3(x)
         x = x + x_skip
         x1 = x
-#         print("\nSAI: ", x.shape)
-#         print("3: ", x[2][5])
-#         print(x[12][5])
         
         x = self.conv2dCaps4_nj_8_strd_2(x)
         x_skip = self.conv3dCaps4_nj_8(x)
@@ -911,9 +866,6 @@ class Model(nn.Module):
         x = self.conv2dCaps4_nj_8_strd_1_2(x)
         x = x + x_skip
         x2 = x
-#         print("\nSAI: ", x.shape)
-#         print("4: ", x[2][5])
-#         print(x[12][5])
         
         xa = self.flatCaps(x1)
         xb = self.flatCaps(x2)
@@ -923,7 +875,7 @@ class Model(nn.Module):
         x = self.capsToScalars(dig_caps)
         masked, indices = self.mask(dig_caps, target)
         decoded = self.decoder(masked)
-#         print(indices)
+
         return dig_caps, masked, decoded, indices
     
     def margin_loss(self, x, labels, lamda, m_plus, m_minus):
@@ -1023,7 +975,7 @@ def test(model, test_loader, loss, batch_size, lamda=0.5, m_plus=0.9, m_minus=0.
 #             correct += 1
     correct += accuracy(indices_cpu, labels_cpu)
 #     if batch_idx % 100 == 0:
-# #       print("batch: ", batch_idx, "accuracy: ", correct/len(test_loader.dataset))
+#        print("batch: ", batch_idx, "accuracy: ", correct/len(test_loader.dataset))
 #         print(indices_cpu)
   print("\nTest Loss: ", test_loss/len(test_loader.dataset), "; Test Accuracy: " , correct/len(test_loader.dataset) * 100,'\n')
 
