@@ -640,7 +640,7 @@ class ConvCapsLayer3D(nn.Module):
   def update_routing(self, x, itr=3):
     # x.shape = (batch, width, width, n_j, ch_j, ch_i)    
     for i in range(itr):
-      k = softmax_3d(self.B, (1,2,3))   # (batch, width, width, 1, ch_j, ch_i)
+      k = softmax_3d(self.B, (1,2,4))   # (batch, width, width, 1, ch_j, ch_i)
       # k = func.softmax(self.B, dim=4)
       S_tmp = k * x
       S = torch.sum(S_tmp, dim=-1, keepdim=True)
