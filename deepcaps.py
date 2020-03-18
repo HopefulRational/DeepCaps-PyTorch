@@ -487,6 +487,7 @@ def squash(s, dim=-1):
     norm = torch.norm(s, dim=dim, keepdim=True)
     return (norm /(1 + norm**2 + eps)) * s
 
+# not being used anymore. instead using nn.functional.softmax
 def softmax_3d(x, dim):
   return (torch.exp(x) / torch.sum(torch.sum(torch.sum(torch.exp(x), dim=dim[0], keepdim=True), dim=dim[1], keepdim=True), dim=dim[2], keepdim=True))
 
@@ -628,20 +629,24 @@ class ConvCapsLayer3D(nn.Module):
     x = inputs.view(self.batch, self.ch_i * self.n_i, self.h_i, self.w_i)
     x = x.unsqueeze(1)
     x = self.conv1(x)
-    width = x.shape[-1]
+    self.width = x.shape[-1]
     
     x = x.permute(0,2,1,3,4)
-    x = x.view(self.batch, self.ch_i, self.ch_j, self.n_j, width, width)
+    x = x.view(self.batch, self.ch_i, self.ch_j, self.n_j, self.width, self.width)
     x = x.permute(0, 4, 5, 3, 2, 1).contiguous()
-    self.B = x.new(x.shape[0], width, width, 1, self.ch_j, self.ch_i).zero_()
+    self.B = x.new(x.shape[0], self.width, self.width, 1, self.ch_j, self.ch_i).zero_()
     x = self.update_routing(x, self.r_num)
     return x
   
   def update_routing(self, x, itr=3):
     # x.shape = (batch, width, width, n_j, ch_j, ch_i)    
     for i in range(itr):
-      k = softmax_3d(self.B, (1,2,4))   # (batch, width, width, 1, ch_j, ch_i)
-      # k = func.softmax(self.B, dim=4)
+      # softmax of self.B along (1,2,4)
+      tmp = self.B.permute(0,5,3,1,2,4).contiguous().reshape(x.shape[0],self.ch_i,1,self.width*self.width*self.ch_j)
+      #k = softmax_3d(self.B, (1,2,4))   # (batch, width, width, 1, ch_j, ch_i)
+      #k = func.softmax(self.B, dim=4)
+      k = func.softmax(tmp,dim=-1)
+      k = k.reshape(x.shape[0],self.ch_i,1,self.width,self.width,self.ch_j).permute(0,3,4,2,5,1).contiguous()
       S_tmp = k * x
       S = torch.sum(S_tmp, dim=-1, keepdim=True)
       S_hat = squash(S)
@@ -651,8 +656,8 @@ class ConvCapsLayer3D(nn.Module):
         self.B = self.B + agrements
       
     S_hat = S_hat.squeeze(-1)
-    batch, h_j, w_j, n_j, ch_j  = S_hat.shape
-    return S_hat.reshape(batch, ch_j, n_j, h_j, w_j)
+    #batch, h_j, w_j, n_j, ch_j  = S_hat.shape
+    return S_hat.permute(0, 4, 3, 1, 2).contiguous()
 
 
 # In[10]:
