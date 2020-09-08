@@ -713,14 +713,13 @@ class CapsuleLayer(nn.Module):
         x = x.unsqueeze(2).unsqueeze(dim=4)
         
         u_hat = torch.matmul(self.W, x).squeeze()  # u_hat -> [batch_size, 32, 10, 32]
-        u_hat_detached = u_hat.detach() #detach the u_hat vector to stop the gradient flow during the calculation of the coefficients for dynamic routing.
         
         #   b_ij = torch.zeros((batch_size, self.num_routes, self.num_capsules, 1))
         b_ij = x.new(x.shape[0], self.num_routes, self.num_capsules, 1).zero_()
         
         for itr in range(self.routing_iters):
             c_ij = func.softmax(b_ij, dim=2)
-            s_j  = (c_ij * u_hat_detached).sum(dim=1, keepdim=True) + self.bias #use detached u_hat during all the iteration except the final iteration.
+            s_j  = (c_ij * u_hat).sum(dim=1, keepdim=True) + self.bias
             v_j  = squash(s_j, dim=-1)
             
             if itr < self.routing_iters-1:
