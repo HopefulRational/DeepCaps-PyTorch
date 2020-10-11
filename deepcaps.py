@@ -801,6 +801,75 @@ class Decoder_mnist(nn.Module):
         return x  # dim: (batch, 1, imsize, imsize)
 
 
+class Decoder_mnist32x32(nn.Module):
+    def __init__(self, caps_size=16, num_caps=1, img_size=28, img_channels=1):
+        super().__init__()
+        
+        self.num_caps = num_caps
+        self.img_channels = img_channels
+        self.img_size = img_size
+
+        self.dense = torch.nn.Linear(caps_size*num_caps, 8*8*16).cuda(device)
+        self.relu = nn.ReLU(inplace=True)
+                                     
+        
+        self.reconst_layers1 = nn.Sequential(nn.BatchNorm2d(num_features=16, momentum=0.8),
+                                            
+                                            nn.ConvTranspose2d(in_channels=16, out_channels=64, 
+                                                               kernel_size=3, stride=1, padding=1
+                                                              )
+                                            )
+        
+        self.reconst_layers2 = nn.ConvTranspose2d(in_channels=64, out_channels=32, 
+                                                  kernel_size=3, stride=2, padding=1
+                                                 )
+                               
+        self.reconst_layers3 = nn.ConvTranspose2d(in_channels=32, out_channels=16, 
+                                                  kernel_size=3, stride=2, padding=1
+                                                 )
+                                            
+        self.reconst_layers4 = nn.ConvTranspose2d(in_channels=16, out_channels=3, 
+                                                  kernel_size=3, stride=1, padding=1
+                                                 )
+        
+        # self.reconst_layers4 = nn.ConvTranspose2d(in_channels=8, out_channels=3, 
+        #                                           kernel_size=3, stride=1, padding=1
+        #                                          )
+                                            
+        self.reconst_layers5 = nn.ReLU()
+                                           
+    
+    
+    def forward(self, x):
+        # x.shape = (batch, 1, capsule_dim(=32 for MNIST))
+        batch = x.shape[0]
+        
+        x = x.type(torch.FloatTensor)
+
+        x = x.cuda()
+
+        x = self.dense(x)
+        x = self.relu(x)
+        x = x.reshape(-1, 16, 8, 8)
+        
+        x = self.reconst_layers1(x)
+        
+        x = self.reconst_layers2(x)
+        
+        # padding
+        p2d = (1, 0, 1, 0)
+        x = func.pad(x, p2d, "constant", 0)
+        x = self.reconst_layers3(x)
+
+        # padding
+        p2d = (1, 0, 1, 0)
+        x = func.pad(x, p2d, "constant", 0)
+        x = self.reconst_layers4(x)      
+        
+        # x = self.reconst_layers5(x)
+        x = x.reshape(-1, self.img_channels, self.img_size, self.img_size)
+        return x  # dim: (batch, 1, imsize, imsize)
+
 # In[13]:
 
 
@@ -899,7 +968,105 @@ class Model(nn.Module):
         loss = self.margin_loss(x, labels, lamda, m_plus, m_minus) + self.reconst_loss(recnstrcted, data)
         return loss.mean()
 
+####################################################################################################################################################
+####################################################################################################################################################
+class Model32x32(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv2d = nn.Conv2d(in_channels=3, out_channels=128,
+                                kernel_size=3, stride=1, padding=1)
+        self.batchNorm = torch.nn.BatchNorm2d(num_features=128, eps=1e-08, momentum=0.99)
+        self.toCaps = ConvertToCaps()
         
+        self.conv2dCaps1_nj_4_strd_2 = Conv2DCaps(h=32, w=32, ch_i=128, n_i=1, ch_j=32, n_j=4, kernel_size=3, stride=2, r_num=1)
+        self.conv2dCaps1_nj_4_strd_1_1 = Conv2DCaps(h=16, w=16, ch_i=32, n_i=4, ch_j=32, n_j=4, kernel_size=3, stride=1, r_num=1)
+        self.conv2dCaps1_nj_4_strd_1_2 = Conv2DCaps(h=16, w=16, ch_i=32, n_i=4, ch_j=32, n_j=4, kernel_size=3, stride=1, r_num=1)
+        self.conv2dCaps1_nj_4_strd_1_3 = Conv2DCaps(h=16, w=16, ch_i=32, n_i=4, ch_j=32, n_j=4, kernel_size=3, stride=1, r_num=1)
+        
+        self.conv2dCaps2_nj_8_strd_2 = Conv2DCaps(h=16, w=16, ch_i=32, n_i=4, ch_j=32, n_j=8, kernel_size=3, stride=2, r_num=1)
+        self.conv2dCaps2_nj_8_strd_1_1 = Conv2DCaps(h=8, w=8, ch_i=32, n_i=8, ch_j=32, n_j=8, kernel_size=3, stride=1, r_num=1)
+        self.conv2dCaps2_nj_8_strd_1_2 = Conv2DCaps(h=8, w=8, ch_i=32, n_i=8, ch_j=32, n_j=8, kernel_size=3, stride=1, r_num=1)
+        self.conv2dCaps2_nj_8_strd_1_3 = Conv2DCaps(h=8, w=8, ch_i=32, n_i=8, ch_j=32, n_j=8, kernel_size=3, stride=1, r_num=1)
+        
+        self.conv2dCaps3_nj_8_strd_2 = Conv2DCaps(h=8, w=8, ch_i=32, n_i=8, ch_j=32, n_j=8, kernel_size=3, stride=2, r_num=1)
+        self.conv2dCaps3_nj_8_strd_1_1 = Conv2DCaps(h=4, w=4, ch_i=32, n_i=8, ch_j=32, n_j=8, kernel_size=3, stride=1, r_num=1)
+        self.conv2dCaps3_nj_8_strd_1_2 = Conv2DCaps(h=4, w=4, ch_i=32, n_i=8, ch_j=32, n_j=8, kernel_size=3, stride=1, r_num=1)
+        self.conv2dCaps3_nj_8_strd_1_3 = Conv2DCaps(h=4, w=4, ch_i=32, n_i=8, ch_j=32, n_j=8, kernel_size=3, stride=1, r_num=1)
+        
+        self.conv2dCaps4_nj_8_strd_2 = Conv2DCaps(h=4, w=4, ch_i=32, n_i=8, ch_j=32, n_j=8, kernel_size=3, stride=2, r_num=1)
+        self.conv3dCaps4_nj_8 = ConvCapsLayer3D(ch_i=32, n_i=8, ch_j=32, n_j=8, kernel_size=3, r_num=3)
+        self.conv2dCaps4_nj_8_strd_1_1 = Conv2DCaps(h=2, w=2, ch_i=32, n_i=8, ch_j=32, n_j=8, kernel_size=3, stride=1, r_num=1)
+        self.conv2dCaps4_nj_8_strd_1_2 = Conv2DCaps(h=2, w=2, ch_i=32, n_i=8, ch_j=32, n_j=8, kernel_size=3, stride=1, r_num=1)
+                
+        self.decoder = Decoder_mnist32x32(caps_size=32, num_caps=1, img_size=32, img_channels=3)
+        self.flatCaps = FlattenCaps()
+        self.digCaps = CapsuleLayer(num_capsules=10, num_routes=64*10, in_channels=8, out_channels=32, routing_iters=3)
+        self.capsToScalars = CapsToScalars()
+        self.mask = Mask_CID()
+        self.mse_loss = nn.MSELoss(reduction="none")
+    
+    def forward(self, x, target=None):
+        x = self.conv2d(x)
+        x = self.batchNorm(x)
+        x = self.toCaps(x)
+        
+        x = self.conv2dCaps1_nj_4_strd_2(x)
+        x_skip = self.conv2dCaps1_nj_4_strd_1_1(x)
+        x = self.conv2dCaps1_nj_4_strd_1_2(x)
+        x = self.conv2dCaps1_nj_4_strd_1_3(x)
+        x = x + x_skip
+        
+        x = self.conv2dCaps2_nj_8_strd_2(x)
+        x_skip = self.conv2dCaps2_nj_8_strd_1_1(x)
+        x = self.conv2dCaps2_nj_8_strd_1_2(x)
+        x = self.conv2dCaps2_nj_8_strd_1_3(x)
+        x = x + x_skip
+        
+        x = self.conv2dCaps3_nj_8_strd_2(x)
+        x_skip = self.conv2dCaps3_nj_8_strd_1_1(x)
+        x = self.conv2dCaps3_nj_8_strd_1_2(x)
+        x = self.conv2dCaps3_nj_8_strd_1_3(x)
+        x = x + x_skip
+        x1 = x
+        
+        x = self.conv2dCaps4_nj_8_strd_2(x)
+        x_skip = self.conv3dCaps4_nj_8(x)
+        x = self.conv2dCaps4_nj_8_strd_1_1(x)
+        x = self.conv2dCaps4_nj_8_strd_1_2(x)
+        x = x + x_skip
+        x2 = x
+        
+        # x1.shape : torch.Size([64, 32, 8, 4, 4]) | x2.shape : torch.Size([64, 32, 8, 2, 2]) (for CIFAR10)
+        xa = self.flatCaps(x1)
+        xb = self.flatCaps(x2)
+        x = torch.cat((xa, xb), dim=-2)
+        dig_caps = self.digCaps(x)
+        
+        x = self.capsToScalars(dig_caps)
+        masked, indices = self.mask(dig_caps, target)
+        decoded = self.decoder(masked)
+
+        return dig_caps, masked, decoded, indices
+    
+    def margin_loss(self, x, labels, lamda, m_plus, m_minus):
+        v_c = torch.norm(x, dim=2, keepdim=True)
+        tmp1 = func.relu(m_plus - v_c).view(x.shape[0], -1) ** 2
+        tmp2 = func.relu(v_c - m_minus).view(x.shape[0], -1) ** 2
+        loss = labels*tmp1 + lamda*(1-labels)*tmp2
+        loss = loss.sum(dim=1)
+        return loss
+    
+    def reconst_loss(self, recnstrcted, data):
+        loss = self.mse_loss(recnstrcted.view(recnstrcted.shape[0], -1), data.view(recnstrcted.shape[0], -1))
+        return 0.4 * loss.sum(dim=1)
+    
+    def loss(self, x, recnstrcted, data, labels, lamda=0.5, m_plus=0.9, m_minus=0.1):
+        loss = self.margin_loss(x, labels, lamda, m_plus, m_minus) + self.reconst_loss(recnstrcted, data)
+        return loss.mean()
+
+
+####################################################################################################################################################
+####################################################################################################################################################
 
 
 # In[14]:
@@ -929,6 +1096,10 @@ def loss(x, recnstrcted, data, labels, lamda=0.5, m_plus=0.9, m_minus=0.1):
 
 
 model = Model().cuda()
+# Uncomment below line for CIFAR10
+# model = Model32x32().cuda()
+
+
 # lr = 0.001
 # optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 # # torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda, last_epoch=-1)
@@ -947,6 +1118,11 @@ m_minus = 0.1
 train_loader = torch.utils.data.DataLoader(datasets.FashionMNIST(root='/home/mtech3/CODES/ankit/data/FashionMNIST/FashionMNIST/',train=True,download=True,transform=trans(rotation_range=0.1, translation_range=0.1, zoom_range=(0.1, 0.2))),batch_size=batch_size,shuffle=True)
 test_loader = torch.utils.data.DataLoader(datasets.FashionMNIST(root='/home/mtech3/CODES/ankit/data/FashionMNIST/FashionMNIST/',train=False,download=True,transform=transforms.ToTensor()),batch_size=batch_size,shuffle=True)
 
+######################
+# Uncomment these for CIFAR10
+# train_loader = torch.utils.data.DataLoader(datasets.CIFAR10(root='./CIFAR10',train=True,download=True,transform=trans(rotation_range=0.1, translation_range=0.1, zoom_range=(0.1, 0.2))),batch_size=batch_size,shuffle=True)
+# test_loader = torch.utils.data.DataLoader(datasets.CIFAR10(root='./CIFAR10',train=False,download=True,transform=transforms.ToTensor()),batch_size=batch_size,shuffle=True)
+######################
 
 # In[17]:
 
